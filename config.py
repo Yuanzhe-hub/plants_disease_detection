@@ -1,5 +1,5 @@
 class DefaultConfigs(object):
-    #1.string parameters
+    # string parameters
     train_data = "./data/train/"
     test_data = "./data/test/"
     val_data = "no"
@@ -10,7 +10,7 @@ class DefaultConfigs(object):
     logs = "./logs/"
     gpus = "0, 1"
 
-    #2.numeric parameters
+    # numeric parameters
     epochs = 40
     batch_size = 8
     img_height = 650

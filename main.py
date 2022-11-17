@@ -19,7 +19,6 @@ from timeit import default_timer as timer
 from models.model import *
 from utils import *
 
-#1. set random.seed and cudnn performance
 # 设置随机数
 random.seed(config.seed)
 np.random.seed(config.seed)
@@ -29,50 +28,51 @@ os.environ["CUDA_VISIBLE_DEVICES"] = config.gpus
 torch.backends.cudnn.benchmark = True
 warnings.filterwarnings('ignore')
 
-#2. evaluate func
+# 评估函数
 def evaluate(val_loader,model,criterion):
+    # Meter类用来跟踪一些统计量的，
+    # 能够在一段“历程”中记录下某个统计量在迭代过程中不断变化的值，并统计相关的量。
     #2.1 define meters
     losses = AverageMeter()
     top1 = AverageMeter()
     top2 = AverageMeter()
-    #2.2 switch to evaluate mode and confirm model has been transfered to cuda
+
+    # 调整到evaluate mode
     model.cuda()
     model.eval()
     with torch.no_grad():
-        for i,(input,target) in enumerate(val_loader):
+        for i, (input,target) in enumerate(val_loader):
             input = Variable(input).cuda()
             target = Variable(torch.from_numpy(np.array(target)).long()).cuda()
-            #target = Variable(target).cuda()
-            #2.2.1 compute output
+
+            # 计算output
             output = model(input)
             loss = criterion(output,target)
 
-            #2.2.2 measure accuracy and record loss
-            precision1,precision2 = accuracy(output,target,topk=(1,2))
+            # 计算精度和损失
+            precision1,precision2 = accuracy(output, target, topk=(1,2))
             losses.update(loss.item(),input.size(0))
             top1.update(precision1[0],input.size(0))
             top2.update(precision2[0],input.size(0))
 
     return [losses.avg,top1.avg,top2.avg]
 
-#3. test model on public dataset and save the probability matrix
+# 测试函数
 def test(test_loader, model,folds):
-    #3.1 confirm the model converted to cuda
     csv_map = OrderedDict({"filename":[],"probability":[]})
     model.cuda()
     model.eval()
     with open("./submit/baseline.json","w",encoding="utf-8") as f :
         submit_results = []
         for i,(input,filepath) in enumerate(tqdm(test_loader)):
+
             #3.2 change everything to cuda and get only basename
             filepath = [os.path.basename(x) for x in filepath]
             with torch.no_grad():
                 image_var = Variable(input).cuda()
-                #3.3.output
-                #print(filepath)
-                #print(input,input.shape)
+                # output
                 y_pred = model(image_var)
-                #print(y_pred.shape)
+
                 smax = nn.Softmax(1)
                 smax_out = smax(y_pred)
             #3.4 save probability to csv files
@@ -89,10 +89,9 @@ def test(test_loader, model,folds):
             submit_results.append({"image_id":row['filename'],"disease_class":pred_label})
         json.dump(submit_results,f,ensure_ascii=False,cls = MyEncoder)
 
-#4. more details to build main function    
+   
 def main():
     fold = 0
-    #4.1 mkdirs
     # 创建文件夹
     if not os.path.exists(config.submit):
         os.mkdir(config.submit)
@@ -106,7 +105,7 @@ def main():
         os.makedirs(config.weights + config.model_name + os.sep +str(fold) + os.sep)
     if not os.path.exists(config.best_models + config.model_name + os.sep +str(fold) + os.sep):
         os.makedirs(config.best_models + config.model_name + os.sep +str(fold) + os.sep)       
-    #4.2 get model and optimizer
+
     # 获得模型和优化器
     model = get_net()
     #model = torch.nn.DataParallel(model)
@@ -118,13 +117,14 @@ def main():
     log = Logger()
     log.open(config.logs + "log_train.txt",mode="a")
     log.write("\n----------------------------------------------- [START %s] %s\n\n" % (datetime.now().strftime('%Y-%m-%d %H:%M:%S'), '-' * 51))
-    #4.3 some parameters for  K-fold and restart model
+    
+    # some parameters for  K-fold and restart model
     start_epoch = 0
     best_precision1 = 0
     best_precision_save = 0
     resume = False
     
-    #4.4 restart the training process
+    # restart the training process
     if resume:
         checkpoint = torch.load(config.best_models + str(fold) + "/model_best.pth.tar")
         start_epoch = checkpoint["epoch"]
@@ -139,20 +139,10 @@ def main():
     #val_data_list = get_files(config.val_data,"val")
     test_files = get_files(config.test_data,"test")
 
-    """ 
-    #4.5.2 split
-    split_fold = StratifiedKFold(n_splits=3)
-    folds_indexes = split_fold.split(X=origin_files["filename"],y=origin_files["label"])
-    folds_indexes = np.array(list(folds_indexes))
-    fold_index = folds_indexes[fold]
-
-    #4.5.3 using fold index to split for train data and val data
-    train_data_list = pd.concat([origin_files["filename"][fold_index[0]],origin_files["label"][fold_index[0]]],axis=1)
-    val_data_list = pd.concat([origin_files["filename"][fold_index[1]],origin_files["label"][fold_index[1]]],axis=1)
-    """
-    # 划分训练集和测试集
+    
+    # 划分训练集和验证集
     train_data_list, val_data_list = train_test_split(train_, test_size = 0.15, stratify=train_["label"])
-    #4.5.4 load dataset
+    # load dataset
     # pin_memory就是锁页内存
     # 当计算机的内存充足的时候，可以设置pin_memory=True。
     # 当系统卡住，或者交换内存使用过多的时候，设置pin_memory=False。
@@ -163,7 +153,7 @@ def main():
     
     # 调整优化器（多少epoch更新一次lr, 以及更新倍数）
     scheduler =  optim.lr_scheduler.StepLR(optimizer,step_size = 10,gamma=0.1)
-    #4.5.5.1 define metrics
+    # define metrics
     train_losses = AverageMeter()
     train_top1 = AverageMeter()
     train_top2 = AverageMeter()
@@ -172,12 +162,12 @@ def main():
     # model.train()和model.eval()两个函数通过改变self.training = True / False 来告知一些特定的层（BN,Dropout）
     # 应该启用 train 时的功能还是 test 时的功能。
     model.train()
-    #logs
+    # logs
     log.write('** start training here! **\n')
     log.write('                           |------------ VALID -------------|----------- TRAIN -------------|------Accuracy------|------------|\n')
     log.write('lr       iter     epoch    | loss   top-1  top-2            | loss   top-1  top-2           |    Current Best    | time       |\n')
     log.write('-------------------------------------------------------------------------------------------------------------------------------\n')
-    #4.5.5 train
+    # train
     start = timer()
     for epoch in range(start_epoch,config.epochs):
         scheduler.step(epoch)  # 用于更新lr
@@ -187,7 +177,7 @@ def main():
             #4.5.5 switch to continue train process
             model.train()
             # pytorch两个基本对象：Tensor（张量）和Variable（变量）
-            # 其中，tensor不能反向传播，variable可以反向传播。
+            # tensor不能反向传播，variable可以反向传播。
             input = Variable(input).cuda()
             target = Variable(torch.from_numpy(np.array(target)).long()).cuda()
             #target = Variable(target).cuda()
@@ -210,9 +200,9 @@ def main():
                          train_losses.avg, train_top1.avg, train_top2.avg,str(best_precision_save),
                          time_to_str((timer() - start),'min'))
             , end='',flush=True)
-        #evaluate
+        # evaluate
         lr = get_learning_rate(optimizer)
-        #evaluate every half epoch
+        # evaluate every half epoch
         valid_loss = evaluate(val_dataloader, model, criterion)
         is_best = valid_loss[1] > best_precision1
         best_precision1 = max(valid_loss[1], best_precision1)
@@ -229,8 +219,8 @@ def main():
                     "fold":fold,
                     "valid_loss":valid_loss,
         },is_best, fold)
-        #adjust learning rate
-        #scheduler.step(valid_loss[1])
+        # adjust learning rate
+        # scheduler.step(valid_loss[1])
         print("\r",end="",flush=True)
         log.write('%0.4f %5.1f %6.1f        | %0.3f  %0.3f  %0.3f          | %0.3f  %0.3f  %0.3f         |         %s         | %s' % (\
                         lr, 0 + epoch, epoch,
