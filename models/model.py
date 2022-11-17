@@ -38,7 +38,7 @@ def get_net():
     model = torchvision.models.resnet50(pretrained = True)    
     #for param in model.parameters():
     #    param.requires_grad = False
-    model.avgpool = nn.AdaptiveAvgPool2d(1)
+    model.avgpool = nn.AdaptiveAvgPool2d(1)  # 对张量应用一个自适应的平均池化,只需要输入输出的size即可
     model.fc = nn.Linear(2048,config.num_classes)
     return model
 

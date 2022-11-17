@@ -92,6 +92,7 @@ def get_files(root,mode):
         all_images = list(chain.from_iterable(jpg_image_1 + jpg_image_2))
         print("loading train dataset")
         for file in tqdm(all_images):
+            file = file.replace('\\', '/')  # 解决glob的问题
             all_data_path.append(file)
             labels.append(int(file.split("/")[-2]))
         all_files = pd.DataFrame({"filename":all_data_path,"label":labels})

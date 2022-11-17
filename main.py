@@ -20,6 +20,7 @@ from models.model import *
 from utils import *
 
 #1. set random.seed and cudnn performance
+# 设置随机数
 random.seed(config.seed)
 np.random.seed(config.seed)
 torch.manual_seed(config.seed)
@@ -55,7 +56,7 @@ def evaluate(val_loader,model,criterion):
     return [losses.avg,top1.avg,top2.avg]
 
 #3. test model on public dataset and save the probability matrix
-def test(test_loader,model,folds):
+def test(test_loader, model,folds):
     #3.1 confirm the model converted to cuda
     csv_map = OrderedDict({"filename":[],"probability":[]})
     model.cuda()
@@ -92,6 +93,7 @@ def test(test_loader,model,folds):
 def main():
     fold = 0
     #4.1 mkdirs
+    # 创建文件夹
     if not os.path.exists(config.submit):
         os.mkdir(config.submit)
     if not os.path.exists(config.weights):
@@ -105,12 +107,13 @@ def main():
     if not os.path.exists(config.best_models + config.model_name + os.sep +str(fold) + os.sep):
         os.makedirs(config.best_models + config.model_name + os.sep +str(fold) + os.sep)       
     #4.2 get model and optimizer
+    # 获得模型和优化器
     model = get_net()
     #model = torch.nn.DataParallel(model)
     model.cuda()
     #optimizer = optim.SGD(model.parameters(),lr = config.lr,momentum=0.9,weight_decay=config.weight_decay)
     optimizer = optim.Adam(model.parameters(),lr = config.lr,amsgrad=True,weight_decay=config.weight_decay)
-    criterion = nn.CrossEntropyLoss().cuda()
+    criterion = nn.CrossEntropyLoss().cuda()  # 损失函数
     #criterion = FocalLoss().cuda()
     log = Logger()
     log.open(config.logs + "log_train.txt",mode="a")
@@ -147,18 +150,27 @@ def main():
     train_data_list = pd.concat([origin_files["filename"][fold_index[0]],origin_files["label"][fold_index[0]]],axis=1)
     val_data_list = pd.concat([origin_files["filename"][fold_index[1]],origin_files["label"][fold_index[1]]],axis=1)
     """
-    train_data_list,val_data_list = train_test_split(train_,test_size = 0.15,stratify=train_["label"])
+    # 划分训练集和测试集
+    train_data_list, val_data_list = train_test_split(train_, test_size = 0.15, stratify=train_["label"])
     #4.5.4 load dataset
+    # pin_memory就是锁页内存
+    # 当计算机的内存充足的时候，可以设置pin_memory=True。
+    # 当系统卡住，或者交换内存使用过多的时候，设置pin_memory=False。
     train_dataloader = DataLoader(ChaojieDataset(train_data_list),batch_size=config.batch_size,shuffle=True,collate_fn=collate_fn,pin_memory=True)
     val_dataloader = DataLoader(ChaojieDataset(val_data_list,train=False),batch_size=config.batch_size,shuffle=True,collate_fn=collate_fn,pin_memory=False)
     test_dataloader = DataLoader(ChaojieDataset(test_files,test=True),batch_size=1,shuffle=False,pin_memory=False)
     #scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer,"max",verbose=1,patience=3)
+    
+    # 调整优化器（多少epoch更新一次lr, 以及更新倍数）
     scheduler =  optim.lr_scheduler.StepLR(optimizer,step_size = 10,gamma=0.1)
     #4.5.5.1 define metrics
     train_losses = AverageMeter()
     train_top1 = AverageMeter()
     train_top2 = AverageMeter()
     valid_loss = [np.inf,0,0]
+
+    # model.train()和model.eval()两个函数通过改变self.training = True / False 来告知一些特定的层（BN,Dropout）
+    # 应该启用 train 时的功能还是 test 时的功能。
     model.train()
     #logs
     log.write('** start training here! **\n')
@@ -168,20 +180,22 @@ def main():
     #4.5.5 train
     start = timer()
     for epoch in range(start_epoch,config.epochs):
-        scheduler.step(epoch)
+        scheduler.step(epoch)  # 用于更新lr
         # train
-        #global iter
+        # global iter
         for iter,(input,target) in enumerate(train_dataloader):
             #4.5.5 switch to continue train process
             model.train()
+            # pytorch两个基本对象：Tensor（张量）和Variable（变量）
+            # 其中，tensor不能反向传播，variable可以反向传播。
             input = Variable(input).cuda()
             target = Variable(torch.from_numpy(np.array(target)).long()).cuda()
             #target = Variable(target).cuda()
             output = model(input)
             loss = criterion(output,target)
 
-            precision1_train,precision2_train = accuracy(output,target,topk=(1,2))
-            train_losses.update(loss.item(),input.size(0))
+            precision1_train, precision2_train = accuracy(output, target, topk=(1,2))
+            train_losses.update(loss.item(), input.size(0))
             train_top1.update(precision1_train[0],input.size(0))
             train_top2.update(precision2_train[0],input.size(0))
             #backward
@@ -199,9 +213,9 @@ def main():
         #evaluate
         lr = get_learning_rate(optimizer)
         #evaluate every half epoch
-        valid_loss = evaluate(val_dataloader,model,criterion)
+        valid_loss = evaluate(val_dataloader, model, criterion)
         is_best = valid_loss[1] > best_precision1
-        best_precision1 = max(valid_loss[1],best_precision1)
+        best_precision1 = max(valid_loss[1], best_precision1)
         try:
             best_precision_save = best_precision1.cpu().data.numpy()
         except:
@@ -214,7 +228,7 @@ def main():
                     "optimizer":optimizer.state_dict(),
                     "fold":fold,
                     "valid_loss":valid_loss,
-        },is_best,fold)
+        },is_best, fold)
         #adjust learning rate
         #scheduler.step(valid_loss[1])
         print("\r",end="",flush=True)
