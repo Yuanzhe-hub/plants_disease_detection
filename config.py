@@ -8,7 +8,7 @@ class DefaultConfigs(object):
     best_models = weights + "best_model/"
     submit = "./submit/"
     logs = "./logs/"
-    gpus = "1"
+    gpus = "0, 1"
 
     #2.numeric parameters
     epochs = 40
